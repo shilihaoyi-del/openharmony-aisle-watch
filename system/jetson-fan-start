@@ -1,0 +1,31 @@
+#!/bin/sh
+# Start the stock Nano PWM fan after Linux boots. No CPU/GPU clock changes.
+set -eu
+fan=/sys/devices/pwm-fan
+case "${1:---full}" in
+  --full) ;;
+  --auto)
+    if [ -w "$fan/temp_control" ]; then
+      printf '1\n' > "$fan/temp_control"
+      echo 'Jetson fan returned to automatic temperature control'
+    fi
+    exit 0 ;;
+  *) echo 'Usage: jetson-fan-start [--full|--auto]' >&2; exit 2 ;;
+esac
+attempt=0
+while [ ! -w "$fan/target_pwm" ]; do
+  attempt=$((attempt+1))
+  if [ "$attempt" -ge 30 ]; then
+    echo 'Jetson PWM fan interface unavailable after 30 seconds' >&2
+    exit 1
+  fi
+  sleep 1
+done
+# Restore automatic cooling if setting manual PWM fails partway through.
+trap 'if [ -w "$fan/temp_control" ]; then printf "1\n" > "$fan/temp_control"; fi' EXIT
+if [ -w "$fan/temp_control" ]; then printf '0\n' > "$fan/temp_control"; fi
+printf '255\n' > "$fan/target_pwm"
+[ "$(cat "$fan/target_pwm")" = 255 ]
+if [ -r "$fan/temp_control" ]; then [ "$(cat "$fan/temp_control")" = 0 ]; fi
+trap - EXIT
+echo "Jetson fan manual PWM=$(cat "$fan/target_pwm")/255; automatic boot service applied"

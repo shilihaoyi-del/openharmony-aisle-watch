@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>通道变更监测 · Jetson Nano</title>
+  <link rel="stylesheet" href="/app.css">
+  <script defer src="/watch.js"></script>
+</head>
+<body>
+  <header class="bar">
+    <div class="identity">
+      <span class="radar-icon" aria-hidden="true"></span>
+      <div><h1>工业通道变更监测</h1><p>OpenHarmony LiteOS Mini · 星闪 SLE · Jetson Nano</p></div>
+    </div>
+    <a class="view-link" href="/">SLAM 地图</a>
+  </header>
+  <main class="watch-layout">
+    <section class="watch-card" aria-labelledby="watch-state">
+      <div class="watch-overview">
+        <div><span class="watch-label">通道状态</span><h2 id="watch-state">监测未启动</h2></div>
+        <div id="watch-link" class="status">等待星闪数据</div>
+      </div>
+      <p class="watch-note" id="watch-reason"></p>
+      <dl class="watch-stats">
+        <div><dt>基线有效 / 监测角格</dt><dd id="watch-baseline">—</dd></div>
+        <div><dt>当前可见 / 基线有效</dt><dd id="watch-observed">—</dd></div>
+        <div><dt>WS63 已处理扫描</dt><dd id="watch-scans">—</dd></div>
+      </dl>
+    </section>
+    <section class="watch-card" aria-labelledby="watch-transport-title">
+      <h2 id="watch-transport-title">星闪传输</h2>
+      <p class="watch-note">感知端判断 → SLE 上报 → 接收端 → Jetson</p>
+      <dl class="watch-stats">
+        <div><dt>收到的应用数据</dt><dd id="watch-bytes">—</dd></div>
+        <div><dt>同帧数完整上报估算</dt><dd id="watch-full">—</dd></div>
+        <div><dt>报告数 / 序号缺口</dt><dd id="watch-frames">—</dd></div>
+      </dl>
+      <p class="watch-note" id="watch-last"></p>
+    </section>
+    <section class="watch-card watch-events" aria-labelledby="watch-events-title">
+      <h2 id="watch-events-title">事件记录</h2>
+      <p class="watch-note" id="watch-empty">等待第一条变化记录</p>
+      <ol id="watch-events"></ol>
+    </section>
+    <section class="watch-card" aria-labelledby="watch-evidence-title">
+      <h2 id="watch-evidence-title">测距证据</h2>
+      <p class="watch-note" id="watch-detail">选择一条事件，查看基线和当前测距。</p>
+      <div class="watch-table-wrap" id="watch-table" hidden>
+        <table>
+          <thead><tr><th scope="col">相对正前方</th><th scope="col">基线距离</th><th scope="col">事件距离</th></tr></thead>
+          <tbody id="watch-evidence"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

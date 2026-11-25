@@ -1,0 +1,6 @@
+cmake_minimum_required(VERSION 3.0.2)
+project(nano_slam)
+find_package(catkin REQUIRED)
+catkin_package()
+catkin_install_python(PROGRAMS scripts/save_map.py scripts/check_scan.py scripts/sim_base.py scripts/safety_gate.py scripts/sim_acceptance.py scripts/motor_link.py DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION})
+install(DIRECTORY launch rviz config DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION})

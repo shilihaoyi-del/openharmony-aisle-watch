@@ -1,0 +1,31 @@
+<launch>
+  <arg name="map" default="/home/jetson/maps/sim_room.yaml"/>
+  <node pkg="nano_slam" type="sim_base.py" name="sim_base" output="screen"/>
+  <node pkg="nano_slam" type="safety_gate.py" name="safety_gate" output="screen"/>
+  <node pkg="map_server" type="map_server" name="map_server" args="$(arg map)"/>
+  <node pkg="amcl" type="amcl" name="amcl" output="screen">
+    <param name="odom_frame_id" value="odom"/>
+    <param name="base_frame_id" value="base_link"/>
+    <param name="global_frame_id" value="map"/>
+    <!-- Initial pose in the map produced by gmapping: first robot pose is map origin. -->
+    <param name="initial_pose_x" value="0.0"/>
+    <param name="initial_pose_y" value="0.0"/>
+    <param name="initial_pose_a" value="0.0"/>
+    <param name="min_particles" value="100"/>
+    <param name="max_particles" value="500"/>
+    <param name="laser_max_beams" value="60"/>
+    <param name="laser_model_type" value="likelihood_field"/>
+    <param name="laser_likelihood_max_dist" value="2.0"/>
+    <param name="odom_model_type" value="diff"/>
+    <param name="odom_alpha1" value="0.05"/><param name="odom_alpha2" value="0.05"/>
+    <param name="odom_alpha3" value="0.05"/><param name="odom_alpha4" value="0.05"/>
+    <param name="update_min_d" value="0.05"/>
+    <param name="update_min_a" value="0.05"/>
+    <param name="transform_tolerance" value="0.5"/>
+    <param name="gui_publish_rate" value="5.0"/>
+  </node>
+  <node pkg="move_base" type="move_base" name="move_base" output="screen">
+    <rosparam command="load" file="$(find nano_slam)/config/navigation.yaml"/>
+    <remap from="cmd_vel" to="/nav_cmd_vel"/>
+  </node>
+</launch>

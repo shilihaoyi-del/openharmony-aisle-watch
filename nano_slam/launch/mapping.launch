@@ -1,0 +1,45 @@
+<launch>
+  <!-- Mapping origin is the laser itself: no unmeasured mounting offsets or fake odometry. -->
+  <arg name="start_driver" default="false"/>
+  <arg name="start_mapper" default="true"/>
+  <arg name="serial_port" default="/dev/serial/by-id/usb-Silicon_Labs_CP2102_USB_to_UART_Bridge_Controller_0001-if00-port0"/>
+  <arg name="serial_baudrate" default="115200"/>
+  <arg name="laser_frame" default="laser"/>
+  <arg name="mapping_frame" default="$(arg laser_frame)"/>
+  <arg name="scan_topic" default="/scan"/>
+  <arg name="map_update_distance" default="0.10"/>
+  <arg name="map_update_angle" default="0.05"/>
+  <arg name="map_pub_period" default="2.0"/>
+  <arg name="rviz" default="false"/>
+  <group if="$(arg start_driver)">
+    <node pkg="rplidar_ros" type="rplidarNode" name="rplidarNode" output="screen">
+      <param name="serial_port" value="$(arg serial_port)"/>
+      <param name="serial_baudrate" value="$(arg serial_baudrate)" type="int"/>
+      <param name="frame_id" value="$(arg laser_frame)"/>
+      <param name="inverted" value="false"/>
+      <param name="angle_compensate" value="true"/>
+    </node>
+  </group>
+  <node if="$(arg start_mapper)" pkg="hector_mapping" type="hector_mapping" name="nano_hector_mapping" output="screen">
+    <param name="map_frame" value="map"/>
+    <param name="base_frame" value="$(arg mapping_frame)"/>
+    <param name="odom_frame" value="$(arg mapping_frame)"/>
+    <param name="scan_topic" value="$(arg scan_topic)"/>
+    <param name="use_tf_scan_transformation" value="true"/>
+    <param name="use_tf_pose_start_estimate" value="false"/>
+    <param name="pub_map_odom_transform" value="true"/>
+    <param name="tf_map_scanmatch_transform_frame_name" value="nano_scanmatcher"/>
+    <param name="map_resolution" value="0.05"/>
+    <param name="map_size" value="1024"/>
+    <param name="map_start_x" value="0.5"/>
+    <param name="map_start_y" value="0.5"/>
+    <param name="map_multi_res_levels" value="2"/>
+    <param name="map_update_distance_thresh" type="double" value="$(arg map_update_distance)"/>
+    <param name="map_update_angle_thresh" type="double" value="$(arg map_update_angle)"/>
+    <param name="map_pub_period" type="double" value="$(arg map_pub_period)"/>
+    <param name="scan_subscriber_queue_size" value="2"/>
+    <param name="advertise_map_service" value="true"/>
+  </node>
+  <node if="$(arg rviz)" pkg="rviz" type="rviz" name="nano_mapping_rviz"
+        args="-d $(find nano_slam)/rviz/mapping.rviz"/>
+</launch>

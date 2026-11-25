@@ -1,0 +1,23 @@
+{
+  "source": "Original target flash backup artifacts/stlink_backup/20261122-172929/original_flash_08000000_256k.bin; motor GPIO tables and spin/init routines",
+  "source_sha256": "469fff7a9f38bc74a030c56dbed6f1bb59e8b7292792e165ddffcfe1858f3d6c",
+  "mcu": "STM32F103RCT6",
+  "flash_base": "0x08000000",
+  "flash_bytes": 262144,
+  "sram_bytes": 49152,
+  "motor_driver": "two TB6612FNG, four independent outputs",
+  "independent_drive_channels": 4,
+  "motors": {
+    "OM1": {"positive_direction": "PA5", "negative_direction": "PA4", "pwm": "PA6", "timer_channel": 1},
+    "OM2": {"positive_direction": "PC4", "negative_direction": "PC5", "pwm": "PA7", "timer_channel": 2},
+    "OM3": {"positive_direction": "PC6", "negative_direction": "PC7", "pwm": "PB0", "timer_channel": 3},
+    "OM4": {"positive_direction": "PB14", "negative_direction": "PB15", "pwm": "PB1", "timer_channel": 4}
+  },
+  "pwm_and_standby": "Four PWM signals recovered from original firmware; standby has no bound MCU pin",
+  "pwm": {"timer": "TIM3 hardware CH1..4", "frequency_hz": 10000, "timer_clock_hz": 8000000, "arr": 799},
+  "limits": {"duty_permille": 200, "duration_ms": 400, "boot_state": "DISARMED"},
+  "uart_usb": {"peripheral": "USART1", "mcu_tx": "PA9", "mcu_rx": "PA10", "baud": 115200},
+  "encoders": "Not configured or used by this open-loop signal firmware",
+  "left_right_assignment": "Awaiting user confirmation; CLI provisional default left=OM1/OM2, right=OM3/OM4",
+  "physical_motor_direction": "Awaiting observation"
+}

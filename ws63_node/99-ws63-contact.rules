@@ -1,0 +1,1 @@
+SUBSYSTEM=="tty", KERNEL=="ttyUSB*", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="7522", GROUP="jetson", MODE="0660", SYMLINK+="ws63-contact"

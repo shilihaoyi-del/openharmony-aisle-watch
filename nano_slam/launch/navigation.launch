@@ -1,0 +1,24 @@
+<!-- Hardware-independent navigation. Base and laser publishers must already exist.
+     Do not run together with a SLAM node publishing map -> odom. -->
+<launch>
+  <arg name="map"/>
+  <arg name="base_frame" default="base_link"/>
+  <arg name="config" default="$(find nano_slam)/config/navigation.yaml"/>
+  <node pkg="map_server" type="map_server" name="map_server" args="$(arg map)"/>
+  <node pkg="nano_slam" type="safety_gate.py" name="safety_gate" output="screen"/>
+  <node pkg="amcl" type="amcl" name="amcl" output="screen">
+    <param name="odom_frame_id" value="odom"/><param name="global_frame_id" value="map"/>
+    <param name="base_frame_id" value="$(arg base_frame)"/>
+    <param name="min_particles" value="100"/><param name="max_particles" value="500"/>
+    <param name="laser_max_beams" value="60"/>
+    <param name="laser_model_type" value="likelihood_field"/>
+    <param name="update_min_d" value="0.05"/><param name="update_min_a" value="0.05"/>
+    <param name="transform_tolerance" value="0.5"/>
+  </node>
+  <node pkg="move_base" type="move_base" name="move_base" output="screen">
+    <rosparam command="load" file="$(arg config)"/>
+    <param name="global_costmap/robot_base_frame" value="$(arg base_frame)"/>
+    <param name="local_costmap/robot_base_frame" value="$(arg base_frame)"/>
+    <remap from="cmd_vel" to="/nav_cmd_vel"/>
+  </node>
+</launch>

@@ -1,0 +1,29 @@
+import("fusion_config.gni")
+
+static_library("ws63_contact_node") {
+  if (ws63_variant == "receiver") {
+    sources = [ "fusion_receiver.c" ]
+  } else {
+    sources = [ "contact_node.c" ]
+  }
+  if (ws63_variant == "fusion") {
+    sources += [ "change_watch.c", "fusion.c", "fusion_node.c", "fusion_sle.c" ]
+  }
+  if (ws63_variant != "contact") {
+    defines = [ "CONFIG_UART_SUPPORT_RX", "CONFIG_UART_SUPPORT_TX" ]
+  }
+  include_dirs = [
+    "//base/iothardware/peripheral/interfaces/inner_api",
+    "//commonlibrary/utils_lite/include",
+    "//kernel/liteos_m/kal/cmsis",
+    "//device/soc/hisilicon/ws63v100/sdk/include/driver",
+    "//device/soc/hisilicon/ws63v100/sdk/include",
+    "//device/soc/hisilicon/ws63v100/sdk/include/middleware/services/bts/sle",
+    "//device/soc/hisilicon/ws63v100/sdk/drivers/drivers/hal/uart",
+    "//device/soc/hisilicon/ws63v100/sdk/drivers/chips/ws63/include",
+    "//device/soc/hisilicon/ws63v100/sdk/drivers/chips/ws63/porting/uart",
+    "//device/soc/hisilicon/ws63v100/sdk/middleware/utils/common_headers",
+    "//device/soc/hisilicon/ws63v100/sdk/middleware/utils/common_headers/native",
+    "//device/soc/hisilicon/ws63v100/sdk/drivers/chips/ws63/rom/drivers/chips/ws63/porting/pinctrl",
+  ]
+}

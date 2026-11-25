@@ -1,0 +1,14 @@
+[Unit]
+Description=Jetson Nano fan startup at full PWM
+After=systemd-udev-trigger.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/jetson-fan-start --full
+ExecStop=/usr/local/sbin/jetson-fan-start --auto
+RemainAfterExit=yes
+TimeoutStartSec=40
+TimeoutStopSec=10
+
+[Install]
+WantedBy=multi-user.target

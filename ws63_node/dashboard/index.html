@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>星闪 SLAM · Jetson Nano</title>
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <header class="bar">
+    <div class="identity">
+      <span class="radar-icon" aria-hidden="true"></span>
+      <div><h1>星闪 SLAM</h1><p>工业通道巡检感知节点 · Jetson Nano</p></div>
+    </div>
+    <div class="bar-controls">
+      <a class="view-link" href="/watch">通道监测</a>
+      <div class="modes" aria-label="数据来源">
+        <button id="recorded" type="button" aria-pressed="true">实测记录</button>
+        <button id="live" type="button" aria-pressed="false">实时</button>
+      </div>
+    </div>
+  </header>
+  <main class="workspace">
+    <section class="map-panel" id="map-panel" aria-labelledby="map-title">
+      <div class="panel-head">
+        <div><h2 id="map-title">SLAM 地图</h2><p>ROS <code>/map</code> · <span id="scan-input">/scan_sle</span></p></div>
+        <span class="status" id="state" role="status"><i></i><span>正在加载</span></span>
+      </div>
+      <div class="viewport" id="viewport">
+        <canvas id="map" aria-label="SLAM 占据地图和雷达扫描点"></canvas>
+        <div id="empty" class="empty" hidden>正在加载实测地图</div>
+        <div class="map-tools" aria-label="地图缩放">
+          <button type="button" id="zoom-in" aria-label="放大" title="放大">+</button>
+          <button type="button" id="zoom-out" aria-label="缩小" title="缩小">−</button>
+          <button type="button" id="fit" title="适合窗口">适合窗口</button>
+        </div>
+        <div class="scale" id="scale" hidden><span></span><b>1 m</b></div>
+        <span class="canvas-label" id="map-frame">MAP</span>
+      </div>
+      <div class="map-footer">
+        <div class="legend" aria-label="图例">
+          <span><i class="wall"></i>障碍</span><span><i class="free"></i>空闲</span>
+          <span><i class="unknown"></i>未知</span>
+        </div>
+        <div class="layers" aria-label="地图图层">
+          <label><input type="checkbox" id="show-scan" checked><i></i>星闪扫描</label>
+          <label title="由连续测距点拟合，显示于地图上方"><input type="checkbox" id="show-walls" checked><i></i>拟合墙线</label>
+          <label><input type="checkbox" id="show-path" checked><i></i>轨迹</label>
+        </div>
+      </div>
+      <dl class="map-readouts" aria-label="地图与定位">
+        <div><dt>激光雷达</dt><dd id="raw-count">—</dd></div><div><dt>星闪回传</dt><dd id="sle-count">—</dd></div>
+        <div><dt>回传频率</dt><dd id="scan-hz">—</dd></div><div><dt>栅格</dt><dd id="resolution">—</dd></div>
+        <div><dt>已观测面积</dt><dd id="known-area">—</dd></div><div><dt>坐标 X / Y</dt><dd id="pose">—</dd></div>
+      </dl>
+    </section>
+    <section class="transmission" aria-labelledby="link-title">
+      <header class="transmission-head">
+        <div><h2 id="link-title">星闪传输</h2><p id="link-note">采集、无线回传与 ROS 发布</p></div>
+        <span class="status" id="link-status" role="status"><i></i><span>等待数据</span></span>
+      </header>
+      <section class="route" aria-labelledby="route-title">
+        <div class="trace-head">
+          <h3 id="route-title">逐跳链路</h3>
+          <button id="play-route" class="export-link" type="button" disabled>播放此帧</button>
+        </div>
+        <ol class="transmission-path" aria-label="数据路径">
+          <li id="route-capture"><strong>激光雷达</strong><span>待采集</span></li>
+          <li id="route-sender" title="OpenHarmony 轻量版感知板"><strong>感知 WS63</strong><span>待提交</span></li>
+          <li id="route-radio" class="radio-hop" title="SLE SSAP Notification"><strong>星闪 SLE</strong><span>待回传</span></li>
+          <li id="route-receiver"><strong>接收 WS63</strong><span>待校验</span></li>
+          <li id="route-ros"><strong>Jetson</strong><span>待重组</span></li>
+        </ol>
+        <ul class="route-packets" id="route-packets" aria-label="分段回传进度"></ul>
+      </section>
+      <dl class="transmission-metrics">
+        <div><dt>已提交 → 已发布</dt><dd id="link-frames">—</dd></div>
+        <div><dt>回传 / 提交段</dt><dd id="link-parts">—</dd></div>
+        <div><dt>整帧完成率</dt><dd id="link-ratio">—</dd></div>
+        <div><dt>采集到 ROS</dt><dd id="link-latency">—</dd></div>
+        <div><dt>接收串口字节</dt><dd id="link-bytes">—</dd></div>
+      </dl>
+        <section class="frame-detail" aria-labelledby="frame-heading">
+          <div class="trace-head"><h3 id="frame-heading">逐段追踪</h3><select id="trace-history" aria-label="选择追踪帧" disabled></select></div>
+          <p id="trace-empty" class="source-info">启动采集后，等待第一帧进入 WS63。</p>
+          <ol class="trace-events" id="trace-events"></ol>
+          <p id="trace-preview" class="trace-preview" hidden></p>
+        </section>
+        <p id="link-progress" class="source-info">等待实测数据。</p>
+    </section>
+    <section class="log-panel" aria-labelledby="log-title">
+      <header class="log-head">
+        <div><h2 id="log-title">传输日志</h2><p id="log-source">等待实测数据</p></div>
+        <div class="log-controls">
+          <label><input type="checkbox" id="follow-log" checked> 跟随最新</label>
+          <button id="export-link" class="export-link" type="button" disabled>导出 JSON</button>
+        </div>
+      </header>
+      <pre class="log-console" id="log-console" aria-label="逐行传输日志" tabindex="0"></pre>
+    </section>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>
