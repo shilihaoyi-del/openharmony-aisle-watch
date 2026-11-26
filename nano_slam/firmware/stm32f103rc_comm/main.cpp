@@ -31,9 +31,10 @@ static void outputs_off() {
 #endif
 }
 
-#if defined(BOARD_ENCODER_ONLY)
+#if defined(BOARD_ENCODER_ONLY) || defined(BOARD_ENCODER_QUERY)
 #include "encoder_telemetry.h"
-#elif defined(BOARD_DC_FOUR)
+#endif
+#if defined(BOARD_DC_FOUR) && !defined(BOARD_ENCODER_ONLY)
 #include "dc_four_wheel.h"
 #elif defined(BOARD_DC_BENCH)
 #include "dc_bench.h"
@@ -88,7 +89,16 @@ class SafeMotor : public j1::MotorHal {
   bool busy() const { return false; }
 };
 class UartReplies : public j1::ReplySink {
+#ifdef BOARD_ENCODER_QUERY
+  uint32_t encoder_sequence_ = 0;
+#endif
  public:
+#ifdef BOARD_ENCODER_QUERY
+  bool reportEncoders() {
+    encoder_report(*this, encoder_sequence_++);
+    return true;
+  }
+#endif
   void send(const char* text) {
     for (;*text;++text) {
       uint32_t begin=milliseconds;
@@ -104,6 +114,11 @@ int main() {
   outputs_off();
   uart_init();
   SysTick_Config(8000U);
+#ifdef BOARD_ENCODER_QUERY
+  // Encoder edge traffic must not delay the independent PWM deadline.
+  NVIC_SetPriority(SysTick_IRQn, 0U);
+  encoder_init();
+#endif
 #ifdef BOARD_ENCODER_ONLY
   UartReplies replies;
   encoder_init();

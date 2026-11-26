@@ -44,14 +44,34 @@ python3 /home/jetson/ws63_node/encoder_odometry.py --port /dev/serial/by-path/pl
 cd /home/jetson/slam_ws/src/nano_slam/scripts
 python car4_signal.py motor3 --send
 python car4_signal.py motor4 --send
+python car4_signal.py u1
+python car4_signal.py u2
 python car4_signal.py forward --send
 python car4_signal.py left --send
 python car4_signal.py right --send
 python car4_signal.py stop --send
 ```
 
-每条运动命令默认 20% / 250 毫秒，`--ms` 最大 400。去掉 `--send` 只预览报文。转弯暂定左侧为 OM1/OM2、右侧为 OM3/OM4：若左侧实际是 OM1/OM3，每次命令加 `--left-motors 1,3`；若某个电机方向相反，使用 `--motor-signs=1,-1,1,-1` 等四个符号。分组和符号尚未自动保存，当前也不能把同向原始信号称为已经验证的直行。
+每条运动命令默认 20% / 250 毫秒，默认配置的 `--ms` 最大 400。去掉 `--send` 只预览报文。按四驱版原理图，`u1` 同时点动 OM1/OM2，`u2` 同时点动 OM3/OM4。同组两轮各用一个独立的电机输出，使用同一个占空比。实物端子位置先用 `motor1` 至 `motor4` 逐口标定。转弯时左侧默认为 OM1/OM2，如果左侧实际连接 OM3/OM4，使用 `--left-motors 3,4`。某个车轮方向相反时，用 `--motor-signs` 修正该路，例如 `--motor-signs=1,-1,1,1` 只翻转 OM2 的电气极性。若需要在不同负载下保持实际轮速一致，需用各轮编码器做闭环控制。
 
 板端命令 `PWM_FOUR,d1,d2,d3,d4,duration_ms`，每路 -200..200 千分数、不能全零。上电 DISARMED，运动必须先 ARM；300 毫秒通信超时、SysTick 独立定时停止、500 毫秒协议硬上限和 IWDG 保留。只做开环控制，编码器不参与反馈，雷达保持停止。先前两路的 `car_signal.py` / PWM_PAIR 不适用于当前四驱镜像。
 
 构建：`build.ps1 -Mode DcFourWheel`；烧录：`python tools/flash_comm.py --profile dc-four`。这些操作不会改变 Nano 风扇自启动服务。
+
+### 四路 30% 点动固件
+
+`build.ps1 -Mode DcFourWheel30` 构建独立的四路镜像，`python tools/flash_comm.py --profile dc-four-30` 会校验镜像和目标板、备份原固件，并在烧录后逐字节回读。该镜像的 `PWM_FOUR` 上限为 300‰，上电停车、点动时限和通信超时沿用现有逻辑。
+
+在确认对应的 STM32 镜像和车轮转向后，使用 `car4_signal.py forward --profile four-pwm-30 --duty 300 --ms 250`。按设备填写 `--port` 和 `--motor-signs`，确保四路实际朝车头方向。执行前先预览，再加 `--send` 发送单次指令。
+
+成组固件通过 `build.ps1 -Mode DcFourWheel30 -FiveSeconds -PairedDrivers` 构建。使用 `--profile four-pwm-30-5s-paired` 选择相应的 Jetson 控制参数。板端 `PWM_FOUR` 要求 OM1/OM2 的带符号占空比相同，OM3/OM4 也相同，每组可以独立停转。`motor1` 至 `motor4` 仍可用 20% 以内、400 毫秒以内的单路诊断信号核对端子。若一组内的实体车轮方向相反，断电后核对电机动力线极性。
+
+带 `-EncoderReadback` 的成组固件支持串口 `ENC` 查询。加 `-AlignEncoderForward` 后，STM32 按 PB6/PB7、PA0/PA1、PC8/PC9、PA11/PA12 的顺序应用 `+1、-1、-1、+1`，并用 `J1ENC2` 标记已校正的帧。Jetson 查询程序 `encoder_odometry.py --query --port <串口>` 对旧 `J1ENC1` 在主机端应用这组符号，对 `J1ENC2` 直接显示板端计数。反转仍返回负数，查询命令不使能电机。
+
+增加 `-FortyPercent` 或 `-FiftyPercent` 构建 40% 或 50% 点动固件，Jetson 使用对应的 `--profile four-pwm-40-5s-paired` 或 `--profile four-pwm-50-5s-paired`。成组测试默认请求所选占空比，单次最长 5 秒。上电时 PWM 关闭，单口诊断仍为 20%、400 毫秒以内。
+
+`-SixtyPercent` 构建 60% 成组固件，对应 Jetson 的 `--profile four-pwm-60-5s-paired`。可用 `--duty 550` 指定 55%。
+
+`-EightyPercent` 构建 80% 成组固件，对应 Jetson 的 `--profile four-pwm-80-5s-paired`。
+
+`car4_signal.py forward --profile four-pwm-50-5s-paired` 默认预览同一帧四路 50%、600 毫秒的启动指令。STM32 在 TIM3 上同时启动四路 PWM。该配置使用当前电机板的 USB 物理路径，换插口时可通过 `--port` 指定新路径。

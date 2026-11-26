@@ -14,6 +14,12 @@ MAX_LINE = 160
 MAX_RATE = 200
 MAX_JOG_STEPS = 200
 MAX_MOTION_SECONDS = 2.0
+FOUR_PWM_LIMIT = 200
+FOUR_PWM_HIGH_LIMIT = 300
+FOUR_PWM_40_LIMIT = 400
+FOUR_PWM_50_LIMIT = 500
+FOUR_PWM_60_LIMIT = 600
+FOUR_PWM_80_LIMIT = 800
 CLOCK = getattr(time, 'monotonic', time.time)
 
 def encode(session, seq, command, *args):
@@ -46,7 +52,7 @@ def decode(frame):
         raise ValueError('identifier out of range')
     return session, seq, fields[3:]
 
-def validate_motion(command, args):
+def validate_motion(command, args, four_pwm_limit=FOUR_PWM_LIMIT, four_pwm_ms=400):
     if command == 'JOG':
         axis, steps, rate = args
         if axis not in (0, 1) or not 1 <= abs(steps) <= MAX_JOG_STEPS or not 1 <= rate <= MAX_RATE:
@@ -65,9 +71,15 @@ def validate_motion(command, args):
         if abs(left)>200 or abs(right)>200 or not (left or right) or not 1<=duration<=400:
             raise ValueError('PWM_PAIR: duties -200..200 permille, not both zero, duration 1..400 ms')
     elif command == 'PWM_FOUR':
+        if (four_pwm_limit, four_pwm_ms) not in ((FOUR_PWM_LIMIT,400),(FOUR_PWM_HIGH_LIMIT,400),
+                                                (FOUR_PWM_HIGH_LIMIT,1000),(FOUR_PWM_HIGH_LIMIT,5000),
+                                                (FOUR_PWM_40_LIMIT,5000),(FOUR_PWM_50_LIMIT,5000),
+                                                (FOUR_PWM_60_LIMIT,5000),(FOUR_PWM_80_LIMIT,5000)):
+            raise ValueError('unsupported four-channel PWM profile')
         values=args[:4]
-        if len(args)!=5 or any(abs(v)>200 for v in values) or not any(values) or not 1<=args[4]<=400:
-            raise ValueError('PWM_FOUR: four duties -200..200 permille, not all zero, duration 1..400 ms')
+        if len(args)!=5 or any(abs(v)>four_pwm_limit for v in values) or not any(values) or not 1<=args[4]<=four_pwm_ms:
+            raise ValueError('PWM_FOUR: duties within +/- %d permille, not all zero, duration 1..%d ms' %
+                             (four_pwm_limit,four_pwm_ms))
     else:
         raise ValueError('unsupported motion command: '+command)
 
@@ -93,6 +105,7 @@ class MotorClient(object):
             raise IOError('short serial write')
         deadline = CLOCK() + .8
         buffer = b''
+        encoder_frame = None
         while CLOCK() < deadline:
             byte = self.serial.read(1)
             if not byte:
@@ -104,6 +117,9 @@ class MotorClient(object):
             if len(buffer) > MAX_LINE:
                 buffer = b''
             if byte == b'\n' and buffer:
+                if command == 'ENC' and buffer.startswith((b'$J1ENC1,', b'$J1ENC2,')):
+                    encoder_frame, buffer = buffer, b''
+                    continue
                 try:
                     session, seq, reply = decode(buffer)
                 except (ValueError, UnicodeError):
@@ -118,18 +134,26 @@ class MotorClient(object):
                     continue
                 if reply[3] not in ('0','1') or reply[4] not in ('0','1') or reply[5] not in ('0','1'):
                     continue
-                return {'command':reply[1], 'state':reply[2], 'bound':reply[3]=='1',
-                        'enabled':reply[4]=='1', 'busy':reply[5]=='1'}
+                result = {'command':reply[1], 'state':reply[2], 'bound':reply[3]=='1',
+                          'enabled':reply[4]=='1', 'busy':reply[5]=='1'}
+                if command == 'ENC':
+                    if encoder_frame is None:
+                        raise RuntimeError('encoder response missing sample')
+                    result['encoder_frame'] = encoder_frame
+                return result
         raise RuntimeError('no matching J1 reply; motion is NOT retried')
     def connect(self):
         self.exchange('HELLO')
         return self.exchange('STATUS')
     def halt(self):
         return self.exchange('STOP')
-    def motion(self, command, args, duration):
-        validate_motion(command, args)
-        if not 0 < duration <= MAX_MOTION_SECONDS:
-            raise ValueError('bench duration must be >0 and <=2 seconds')
+    def motion(self, command, args, duration, four_pwm_limit=FOUR_PWM_LIMIT, four_pwm_ms=400):
+        validate_motion(command, args, four_pwm_limit, four_pwm_ms)
+        max_duration = MAX_MOTION_SECONDS
+        if command == 'PWM_FOUR':
+            max_duration = max(max_duration, args[4] / 1000.0 + .2)
+        if not 0 < duration <= max_duration:
+            raise ValueError('bench duration must be >0 and <=%g seconds' % max_duration)
         status = self.connect()
         if not status['bound']:
             raise RuntimeError('firmware has no bound motor hardware interface')
@@ -164,7 +188,7 @@ def main():
     parser.add_argument('--send', action='store_true', help='open the port and transmit; default only prints frames')
     parser.add_argument('--session', type=int, default=None)
     sub = parser.add_subparsers(dest='action')
-    for action in ('hello','status','stop','estop','clear'):
+    for action in ('hello','status','stop','estop','clear','enc'):
         sub.add_parser(action)
     jog = sub.add_parser('jog')
     jog.add_argument('--axis', type=int, default=0)
@@ -230,7 +254,7 @@ def main():
             print('BOUNDED_MOTION_FINISHED_AND_STOPPED')
         else:
             print(client.connect())
-            if command == 'CLEAR':print(client.exchange('CLEAR'))
+            if command in ('CLEAR','ENC'):print(client.exchange(command))
     finally:
         client.close()
 

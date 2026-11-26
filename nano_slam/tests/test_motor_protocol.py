@@ -75,19 +75,71 @@ class HostTests(unittest.TestCase):
         self.assertIn(b'PWM_PAIR,0,200,250',result)
     def test_four_bounds_and_mapping(self):
         link.validate_motion('PWM_FOUR',(0,0,200,200,250))
+        link.validate_motion('PWM_FOUR',(300,300,300,300,250),link.FOUR_PWM_HIGH_LIMIT)
+        with self.assertRaises(ValueError):
+            link.validate_motion('PWM_FOUR',(300,300,300,300,250))
+        with self.assertRaises(ValueError):
+            link.validate_motion('PWM_FOUR',(301,300,300,300,250),link.FOUR_PWM_HIGH_LIMIT)
         link.validate_motion('PWM',(3,200,250))
         for values in ((0,0,201,0,250),(0,0,0,0,250),(200,200,200,200,401)):
             with self.assertRaises(ValueError):link.validate_motion('PWM_FOUR',values)
         self.assertEqual(car4_signal.four_duties('motor3',200),(0,0,200,0))
         self.assertEqual(car4_signal.four_duties('motor4',200),(0,0,0,200))
         self.assertEqual(car4_signal.four_duties('forward',200),(200,200,200,200))
+        self.assertEqual(car4_signal.four_duties('forward',300,signs=(1,-1,1,-1),
+                                                max_duty=link.FOUR_PWM_HIGH_LIMIT),(300,-300,300,-300))
         self.assertEqual(car4_signal.four_duties('left',200),(0,0,200,200))
-        self.assertEqual(car4_signal.four_duties('right',200,(1,3),(1,-1,1,-1)),(200,0,200,0))
+        self.assertEqual(car4_signal.four_duties('right',200,(3,4),(1,-1,1,-1)),(0,0,200,-200))
         with self.assertRaises(ValueError):car4_signal.four_duties('left',200,(1,1))
+        with self.assertRaises(ValueError):car4_signal.four_duties('right',200,(1,3))
         script=os.path.join(os.path.dirname(link.__file__),'car4_signal.py')
         result=subprocess.check_output([sys.executable,script,'motor4'])
-        self.assertIn(b'PWM_FOUR,0,0,0,200,250',result)
+        self.assertIn(b'PWM,3,200,250',result)
         self.assertIn(b'DRY_RUN',result)
+    def test_each_driver_sends_one_command_for_its_two_motors(self):
+        script=os.path.join(os.path.dirname(link.__file__),'car4_signal.py')
+        for action,expected in (('u1',b'PWM_FOUR,200,200,0,0,250'),('u2',b'PWM_FOUR,0,0,200,200,250')):
+            result=subprocess.check_output([sys.executable,script,action])
+            self.assertEqual(result.count(b'PWM_FOUR'),1)
+            self.assertIn(expected,result)
+    def test_five_second_pwm_requires_the_matching_profile(self):
+        values=(300,300,300,300,5000)
+        link.validate_motion('PWM_FOUR',values,300,5000)
+        for limit in (400,1000):
+            with self.assertRaises(ValueError):link.validate_motion('PWM_FOUR',values,300,limit)
+        with self.assertRaises(ValueError):link.validate_motion('PWM_FOUR',values[:4]+(5001,),300,5000)
+        script=os.path.join(os.path.dirname(link.__file__),'car4_signal.py')
+        result=subprocess.check_output([sys.executable,script,'forward','--profile','four-pwm-30-5s',
+                                        '--duty','300','--ms','5000'])
+        self.assertIn(b'PWM_FOUR,300,300,300,300,5000',result)
+    def test_paired_firmware_profile_matches_board_rules(self):
+        script=os.path.join(os.path.dirname(link.__file__),'car4_signal.py')
+        profile=['--profile','four-pwm-30-5s-paired']
+        result=subprocess.check_output([sys.executable,script,'u2','--duty','300','--ms','5000']+profile)
+        self.assertIn(b'PWM_FOUR,0,0,300,300,5000',result)
+        result=subprocess.check_output([sys.executable,script,'motor3']+profile)
+        self.assertIn(b'PWM,2,200,250',result)
+        with self.assertRaises(subprocess.CalledProcessError):
+            subprocess.check_output([sys.executable,script,'u1','--motor-signs=1,-1,1,1']+profile,
+                                    stderr=subprocess.STDOUT)
+    def test_high_duty_paired_profile_limits(self):
+        script=os.path.join(os.path.dirname(link.__file__),'car4_signal.py')
+        for limit in (link.FOUR_PWM_40_LIMIT,link.FOUR_PWM_50_LIMIT,link.FOUR_PWM_60_LIMIT,link.FOUR_PWM_80_LIMIT):
+            profile=['--profile','four-pwm-%d-5s-paired'%(limit//10)]
+            result=subprocess.check_output([sys.executable,script,'u1','--ms','5000']+profile)
+            self.assertIn(('PWM_FOUR,%d,%d,0,0,5000'%(limit,limit)).encode('ascii'),result)
+            result=subprocess.check_output([sys.executable,script,'motor1']+profile)
+            self.assertIn(b'PWM,0,200,250',result)
+            with self.assertRaises(ValueError):
+                link.validate_motion('PWM_FOUR',(limit+1,limit+1,0,0,5000),limit,5000)
+    def test_loaded_start_uses_one_four_wheel_pulse(self):
+        script=os.path.join(os.path.dirname(link.__file__),'car4_signal.py')
+        command=[sys.executable,script,'forward','--profile','four-pwm-50-5s-paired']
+        result=subprocess.check_output(command)
+        self.assertEqual(result.count(b'PWM_FOUR'),1)
+        self.assertIn(b'PWM_FOUR,500,500,500,500,600',result)
+        result=subprocess.check_output(command+['--ms','700'])
+        self.assertIn(b'PWM_FOUR,500,500,500,500,700',result)
     def test_transport_rejection_not_retried(self):
         client=link.MotorClient('FAKE',124,FakeSerial);client.serial.reject=True
         with self.assertRaises(RuntimeError):client.exchange('ARM')
@@ -125,6 +177,13 @@ class NativeWireTests(unittest.TestCase):
     def test_peer_handshake_and_reject_unarmed(self):
         status=self.client.connect();self.assertTrue(status['bound'])
         with self.assertRaises(RuntimeError):self.client.exchange('JOG',0,50,100)
+    def test_encoder_query_returns_sample_before_the_matching_ack(self):
+        self.client.connect()
+        reply=self.client.exchange('ENC')
+        body=b'J1ENC1,0,100,10,20,30,40,0,0,0,0'
+        frame=b'$'+body+('*%04X\n'%binascii.crc_hqx(body,0xffff)).encode('ascii')
+        self.assertEqual(reply['encoder_frame'],frame)
+        self.assertFalse(reply['enabled'])
     def test_host_and_cpp_finite_pwm(self):
         self.client.motion('PWM',(0,200,250),.5)
         self.client.session=1004

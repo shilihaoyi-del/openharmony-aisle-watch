@@ -28,7 +28,7 @@ static bool number(const char* s, int64_t minimum, int64_t maximum, int64_t& out
 }
 Controller::Controller(MotorHal& hal, ReplySink& sink):hal_(hal),sink_(sink),
     state_(DISARMED),session_(0),retired_session_(0),last_seq_(0),lease_ms_(0),jog_start_ms_(0),
-    enabled_(false),collecting_(false),length_(0) {
+    pwm_timeout_ms_(500),enabled_(false),collecting_(false),length_(0) {
   last_request_[0]=cached_reply_[0]=0;
   hal_.stop();hal_.enable(false);
 }
@@ -49,7 +49,7 @@ void Controller::tick(uint32_t now) {
     stop(DISARMED);return;
   }
   if (state_==JOGGING && !hal_.busy()) state_=ARMED;
-  if (state_==PWM_TEST && static_cast<uint32_t>(now-jog_start_ms_)>=500) { stop(DISARMED);return; }
+  if (state_==PWM_TEST && static_cast<uint32_t>(now-jog_start_ms_)>=pwm_timeout_ms_) { stop(DISARMED);return; }
   if (state_==PWM_TEST && !hal_.busy()) state_=ARMED;
 }
 void Controller::reply(uint32_t session,uint32_t seq,const char* kind,const char* cmd,
@@ -139,6 +139,14 @@ void Controller::process(uint32_t now) {
   const char* error=0;
   if (hello || (strcmp(cmd,"STATUS")==0 && count==4)) {
     // Read-only; never refresh a motion watchdog.
+  } else if (strcmp(cmd,"ENC")==0 && count==4) {
+    if (!sink_.reportEncoders()) error="UNBOUND";
+    else {
+      // A new sequence is required to sample again. An ACK alone is not replayable.
+      cached_reply_[0]=0;
+      reply(sid,seq,"ACK",cmd);
+      return;
+    }
   } else if (strcmp(cmd,"CLEAR")==0 && count==4) {
     if (hal_.estopInput()||!hal_.healthy()) error="INTERLOCK";
     else stop(DISARMED);
@@ -172,7 +180,7 @@ void Controller::process(uint32_t now) {
     else if (!enabled_ || state_!=ARMED || hal_.busy()) error="STATE";
     else if (!hal_.pwm(static_cast<uint8_t>(axis),static_cast<int16_t>(duty),static_cast<uint16_t>(duration))) {
       stop(FAULT);error="HAL";
-    } else {state_=PWM_TEST;jog_start_ms_=lease_ms_=now;}
+    } else {state_=PWM_TEST;pwm_timeout_ms_=500;jog_start_ms_=lease_ms_=now;}
   } else if (strcmp(cmd,"PWM_PAIR")==0 && count==7) {
     int64_t left,right,duration;
     if (!number(fields[4],-200,200,left)||!number(fields[5],-200,200,right)||(!left&&!right)||
@@ -180,16 +188,23 @@ void Controller::process(uint32_t now) {
     else if (!enabled_ || state_!=ARMED || hal_.busy()) error="STATE";
     else if (!hal_.pwmPair(static_cast<int16_t>(left),static_cast<int16_t>(right),static_cast<uint16_t>(duration))) {
       stop(FAULT);error="HAL";
-    } else {state_=PWM_TEST;jog_start_ms_=lease_ms_=now;}
+    } else {state_=PWM_TEST;pwm_timeout_ms_=500;jog_start_ms_=lease_ms_=now;}
   } else if (strcmp(cmd,"PWM_FOUR")==0 && count==9) {
     int64_t m1,m2,m3,m4,duration;
-    if (!number(fields[4],-200,200,m1)||!number(fields[5],-200,200,m2)||
-        !number(fields[6],-200,200,m3)||!number(fields[7],-200,200,m4)||(!m1&&!m2&&!m3&&!m4)||
-        !number(fields[8],1,400,duration)) error="RANGE";
+    if (!number(fields[4],-PWM_FOUR_MAX,PWM_FOUR_MAX,m1)||!number(fields[5],-PWM_FOUR_MAX,PWM_FOUR_MAX,m2)||
+        !number(fields[6],-PWM_FOUR_MAX,PWM_FOUR_MAX,m3)||!number(fields[7],-PWM_FOUR_MAX,PWM_FOUR_MAX,m4)||(!m1&&!m2&&!m3&&!m4)||
+        !number(fields[8],1,PWM_FOUR_DURATION_MAX,duration)) error="RANGE";
+#ifdef J1_PWM_FOUR_PAIRED
+    else if (m1!=m2 || m3!=m4) error="PAIR";
+#endif
     else if (!enabled_ || state_!=ARMED || hal_.busy()) error="STATE";
     else if (!hal_.pwmFour(static_cast<int16_t>(m1),static_cast<int16_t>(m2),static_cast<int16_t>(m3),static_cast<int16_t>(m4),static_cast<uint16_t>(duration))) {
       stop(FAULT);error="HAL";
-    } else {state_=PWM_TEST;jog_start_ms_=lease_ms_=now;}
+    } else {
+      state_=PWM_TEST;
+      pwm_timeout_ms_=duration>400 ? static_cast<uint16_t>(duration+100) : 500;
+      jog_start_ms_=lease_ms_=now;
+    }
   } else error="COMMAND";
   if (error) reply(sid,seq,"ERR",cmd,error,true);
   else reply(sid,seq,"ACK",cmd,0,true);

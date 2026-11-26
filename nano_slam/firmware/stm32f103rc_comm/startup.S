@@ -28,7 +28,7 @@ __Vectors:
 .word Default_Handler
 .endr
 .word SysTick_Handler
-#ifdef BOARD_ENCODER_ONLY
+#if defined(BOARD_ENCODER_ONLY) || defined(BOARD_ENCODER_QUERY)
 .rept 6
 .word Default_Handler
 .endr

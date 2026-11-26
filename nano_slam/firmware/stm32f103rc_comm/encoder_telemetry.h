@@ -63,6 +63,12 @@ static void encoder_init() {
   EXTI->FTSR |= ENCODER_LINES;
   EXTI->PR = ENCODER_LINES;
   EXTI->IMR |= ENCODER_LINES;
+#ifdef BOARD_ENCODER_QUERY
+  NVIC_SetPriority(EXTI0_IRQn, 2U);
+  NVIC_SetPriority(EXTI1_IRQn, 2U);
+  NVIC_SetPriority(EXTI9_5_IRQn, 2U);
+  NVIC_SetPriority(EXTI15_10_IRQn, 2U);
+#endif
   NVIC_EnableIRQ(EXTI0_IRQn);
   NVIC_EnableIRQ(EXTI1_IRQn);
   NVIC_EnableIRQ(EXTI9_5_IRQn);
@@ -79,9 +85,17 @@ static void encoder_report(j1::ReplySink& replies, uint32_t sequence) {
     invalid[i] = encoder_invalid[i];
   }
   __set_PRIMASK(flags);
+#ifdef BOARD_ENCODER_FORWARD
+  // Convert these two channels to chassis-forward polarity, with uint32 wraparound.
+  count[1] = 0U - count[1];  // PA0/PA1
+  count[2] = 0U - count[2];  // PC8/PC9
+  const char* prefix = "J1ENC2";
+#else
+  const char* prefix = "J1ENC1";
+#endif
   char body[118];
-  const int length = snprintf(body, sizeof(body), "J1ENC1,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu",
-      (unsigned long)sequence, (unsigned long)tick,
+  const int length = snprintf(body, sizeof(body), "%s,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu",
+      prefix, (unsigned long)sequence, (unsigned long)tick,
       (unsigned long)count[0], (unsigned long)count[1], (unsigned long)count[2], (unsigned long)count[3],
       (unsigned long)invalid[0], (unsigned long)invalid[1], (unsigned long)invalid[2], (unsigned long)invalid[3]);
   if (length < 0 || static_cast<unsigned>(length) >= sizeof(body)) return;

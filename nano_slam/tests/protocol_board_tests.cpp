@@ -39,8 +39,16 @@ struct FakeMotor: j1::MotorHal {
   }
 };
 struct Capture: j1::ReplySink {
-  std::string last;int count=0;bool print=false;
+  std::string last;int count=0;bool print=false,encoders=false;
   void send(const char* frame) {last=frame;++count;if(print){fputs(frame,stdout);fflush(stdout);}}
+  bool reportEncoders() {
+    if (!encoders) return false;
+    const char body[]="J1ENC1,0,100,10,20,30,40,0,0,0,0";
+    char sample[64];
+    snprintf(sample,sizeof sample,"$%s*%04X\n",body,j1::crc16(body,strlen(body)));
+    send(sample);
+    return true;
+  }
 };
 static std::string frame(uint32_t sid,uint32_t seq,const char* command) {
   char body[256],result[300];
@@ -96,6 +104,16 @@ static void tests() {
     send(c,h,6,1,"HELLO",434);send(c,h,6,2,"CLEAR",435);assert(has(sink,"ERR,CLEAR,INTERLOCK"));
     h.physical_stop=false;send(c,h,6,3,"CLEAR",436);assert(c.state()==j1::DISARMED);
     h.good=false;handshake(c,h,7,437);assert(has(sink,"ERR,ARM,INTERLOCK"));
+  }
+  {
+    FakeMotor h;Capture sink;j1::Controller c(h,sink);handshake(c,h,31);
+    send(c,h,31,3,"ENC",50);assert(has(sink,"ERR,ENC,UNBOUND"));
+    sink.encoders=true;
+    const int before=sink.count;
+    send(c,h,31,4,"ENC",250);
+    assert(sink.count==before+2&&has(sink,"ACK,ENC,ARMED"));
+    send(c,h,31,4,"ENC",275);assert(has(sink,"ERR,ENC,SEQ"));
+    c.tick(300);assert(!h.enabled);
   }
   {
     FakeMotor h;h.bound=false;Capture sink;j1::Controller c(h,sink);
@@ -170,28 +188,47 @@ static void tests() {
   }
   {
     FakeMotor h;Capture sink;j1::Controller c(h,sink);
-    send(c,h,17,1,"HELLO");send(c,h,17,2,"PWM_FOUR,0,0,200,0,250");
+    send(c,h,17,1,"HELLO");send(c,h,17,2,"PWM_FOUR,0,0,200,200,250");
     assert(has(sink,"ERR,PWM_FOUR,STATE")&&h.four_calls==0);
     send(c,h,17,3,"ARM");
-    send(c,h,17,4,"PWM_FOUR,0,0,201,0,250");assert(has(sink,"ERR,PWM_FOUR,RANGE"));
+    char excessive[64],maximum[64];
+    snprintf(excessive,sizeof excessive,"PWM_FOUR,0,0,%d,0,250",j1::PWM_FOUR_MAX+1);
+    snprintf(maximum,sizeof maximum,"PWM_FOUR,%d,%d,-200,-200,250",j1::PWM_FOUR_MAX,j1::PWM_FOUR_MAX);
+    send(c,h,17,4,excessive);assert(has(sink,"ERR,PWM_FOUR,RANGE"));
     send(c,h,17,5,"PWM_FOUR,0,0,0,0,250");assert(has(sink,"ERR,PWM_FOUR,RANGE"));
-    send(c,h,17,6,"PWM_FOUR,200,-200,200,-200,401");assert(has(sink,"ERR,PWM_FOUR,RANGE"));
-    send(c,h,17,7,"PWM_FOUR,200,-200,200,-200,250");
-    assert(h.four_calls==1&&h.four[0]==200&&h.four[1]==-200&&h.four[2]==200&&h.four[3]==-200);
-    send(c,h,17,7,"PWM_FOUR,200,-200,200,-200,250",50);assert(h.four_calls==1);
-    send(c,h,17,8,"PWM_FOUR,0,0,0,200,250",60);assert(has(sink,"ERR,PWM_FOUR,STATE"));
+    snprintf(excessive,sizeof excessive,"PWM_FOUR,200,-200,200,-200,%u",unsigned(j1::PWM_FOUR_DURATION_MAX+1));
+    send(c,h,17,6,excessive);assert(has(sink,"ERR,PWM_FOUR,RANGE"));
+    send(c,h,17,7,maximum);
+    assert(h.four_calls==1&&h.four[0]==j1::PWM_FOUR_MAX&&h.four[1]==j1::PWM_FOUR_MAX&&h.four[2]==-200&&h.four[3]==-200);
+    send(c,h,17,7,maximum,50);assert(h.four_calls==1);
+    send(c,h,17,8,"PWM_FOUR,0,0,200,200,250",60);assert(has(sink,"ERR,PWM_FOUR,STATE"));
     send(c,h,17,9,"KEEP",200);h.now=260;c.tick(260);assert(c.state()==j1::ARMED);
     send(c,h,17,10,"PWM,3,200,250",270);assert(h.pwm_calls==1);
     send(c,h,18,1,"STOP",280);assert(!h.enabled&&!h.moving);
     handshake(c,h,19,400);h.hold_busy=true;
-    send(c,h,19,3,"PWM_FOUR,0,0,200,200,400",400);
-    for(uint32_t t=500;t<900;t+=100)send(c,h,19,3+(t-400)/100,"KEEP",t);
-    c.tick(900);assert(!h.enabled&&!h.moving);
+    snprintf(maximum,sizeof maximum,"PWM_FOUR,200,200,200,200,%u",unsigned(j1::PWM_FOUR_DURATION_MAX));
+    send(c,h,19,3,maximum,400);
+    const uint32_t deadline=500+j1::PWM_FOUR_DURATION_MAX;
+    for(uint32_t t=500;t<deadline;t+=100)send(c,h,19,3+(t-400)/100,"KEEP",t);
+    c.tick(deadline-1);assert(h.enabled&&h.moving);
+    c.tick(deadline);assert(!h.enabled&&!h.moving);
   }
+#ifdef J1_PWM_FOUR_PAIRED
+  {
+    FakeMotor h;Capture sink;j1::Controller c(h,sink);handshake(c,h,20);
+    send(c,h,20,3,"PWM_FOUR,200,150,0,0,250");assert(has(sink,"ERR,PWM_FOUR,PAIR"));
+    send(c,h,20,4,"PWM_FOUR,0,0,200,-200,250");assert(has(sink,"ERR,PWM_FOUR,PAIR"));
+    send(c,h,20,5,"PWM_FOUR,0,0,200,0,250");assert(has(sink,"ERR,PWM_FOUR,PAIR"));
+    assert(h.four_calls==0&&!h.moving);
+    send(c,h,20,6,"PWM_FOUR,300,300,0,0,5000");
+    assert(h.four_calls==1&&h.four[0]==300&&h.four[1]==300&&h.four[2]==0&&h.four[3]==0);
+    c.tick(300);assert(!h.enabled&&!h.moving);
+  }
+#endif
   puts("NATIVE_PROTOCOL_TESTS_PASSED");
 }
 static int emulator() {
-  FakeMotor h;Capture sink;sink.print=true;j1::Controller c(h,sink);
+  FakeMotor h;Capture sink;sink.print=true;sink.encoders=true;j1::Controller c(h,sink);
   const auto start=std::chrono::steady_clock::now();
   while(true) {
     h.now=static_cast<uint32_t>(std::chrono::duration_cast<std::chrono::milliseconds>(

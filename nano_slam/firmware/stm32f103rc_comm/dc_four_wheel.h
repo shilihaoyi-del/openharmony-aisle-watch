@@ -38,14 +38,14 @@ class DcBenchMotor:public j1::MotorHal {
   bool jog(uint8_t,int32_t,uint16_t){return false;}
   bool busy() const{return bench_pwm_active;}
   bool pwm(uint8_t axis,int16_t duty,uint16_t duration) {
-    if(axis>3||!duty)return false;
+    if(axis>3||!duty||duty>200||duty< -200||duration>400)return false;
     int16_t values[4]={0,0,0,0};values[axis]=duty;
     return pwmFour(values[0],values[1],values[2],values[3],duration);
   }
   bool pwmFour(int16_t m1,int16_t m2,int16_t m3,int16_t m4,uint16_t duration) {
     int16_t values[4]={m1,m2,m3,m4};
-    if(!enabled_||!duration||duration>400||(!m1&&!m2&&!m3&&!m4))return false;
-    for(unsigned i=0;i<4;++i)if(values[i]>200||values[i]< -200)return false;
+    if(!enabled_||!duration||duration>j1::PWM_FOUR_DURATION_MAX||(!m1&&!m2&&!m3&&!m4))return false;
+    for(unsigned i=0;i<4;++i)if(values[i]>j1::PWM_FOUR_MAX||values[i]< -j1::PWM_FOUR_MAX)return false;
     bench_stop_outputs();
     // TIM3 clock is 8 MHz, ARR 799 -> hardware PWM at 10 kHz.
     TIM3->PSC=0;TIM3->ARR=799;TIM3->CNT=0;TIM3->CCMR1=0x6868;TIM3->CCMR2=0x6868;
