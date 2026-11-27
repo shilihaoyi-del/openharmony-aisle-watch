@@ -9,6 +9,8 @@ from socketserver import ThreadingMixIn
 import time
 from urllib.parse import urlsplit
 
+from site_station import SiteStation
+
 
 ROOT = Path(__file__).resolve().parent
 STATIC = {
@@ -58,11 +60,12 @@ class Handler(BaseHTTPRequestHandler):
             data = snapshot(ROOT / ("live.json" if live else "recording.json"), live=live)
             return self.reply(200, "application/json", data or b"null")
         if route == "/api/watch":
-            try:
-                data = (ROOT / "watch.json").read_bytes()
-            except OSError:
-                data = b"null"
-            return self.reply(200, "application/json", data)
+            station = self.server.site_station
+            watch = station.decorate(station.read_watch())
+            return self.reply(200, "application/json", json.dumps(watch).encode("utf-8"))
+        if route == "/api/station":
+            reception = self.server.site_station.reception()
+            return self.reply(200, "application/json", json.dumps(reception).encode("utf-8"))
         return self.reply(404, "text/plain", b"Not found")
 
     def reply(self, status, content_type, data):
@@ -81,10 +84,20 @@ class Handler(BaseHTTPRequestHandler):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--port", type=int, default=8787)
+    parser.add_argument("--station-port", default="auto", help="ESP32 serial port, auto, or off")
+    parser.add_argument("--station-watch", type=Path, default=ROOT / "watch.json", help="watch snapshot path")
+    parser.add_argument("--station-log", type=Path, default=ROOT / "site_confirmations.json", help="confirmation store path")
     args = parser.parse_args()
     with Server(("127.0.0.1", args.port), Handler) as server:
+        station = SiteStation(args.station_watch, args.station_log, args.station_port)
+        server.site_station = station
+        if args.station_port != "off":
+            station.start()
         print("SLAM display at http://127.0.0.1:%d" % args.port, flush=True)
-        server.serve_forever()
+        try:
+            server.serve_forever()
+        finally:
+            station.stop.set()
 
 
 if __name__ == "__main__":

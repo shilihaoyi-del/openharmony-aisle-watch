@@ -1,0 +1,8 @@
+menu "Aisle site station"
+
+config AISLE_STATION_RGB_GPIO
+    int "Addressable RGB LED GPIO"
+    range 1 48
+    default 38
+
+endmenu

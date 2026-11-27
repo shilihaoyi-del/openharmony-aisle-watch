@@ -182,6 +182,20 @@ canvas.dragging { cursor: grabbing; }
 .watch-card table { border-collapse: collapse; width: 100%; font-size: clamp(13px, 1.15vw, 19px); }
 .watch-card th { position: sticky; top: 0; background: var(--panel); }
 .watch-card td, .watch-card th { text-align: left; border-bottom: 1px solid var(--line); padding: 7px 10px; }
+.station-card { grid-column: 1 / -1; }
+.station-data { display: grid; grid-template-columns: 1.1fr 1fr; gap: 12px; margin-top: 12px; }
+.station-stats {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; align-content: start;
+}
+.station-stats div, .station-log { padding: 10px 12px; background: #111d23; border: 1px solid var(--line); border-radius: 8px; }
+.station-stats dt, .station-log h3 { color: var(--muted); font-size: clamp(12px, .95vw, 16px); }
+.station-stats dd { margin-top: 6px; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.station-log h3 { margin: 0 0 5px; font-weight: 500; }
+.station-log ol { display: grid; gap: 3px; margin: 0; padding: 0; list-style: none; font-size: .9rem; }
+.station-log li { display: flex; gap: .8em; }
+.station-log li span { min-width: 4ch; color: var(--muted); font-variant-numeric: tabular-nums; }
+.station-log li code { overflow-wrap: anywhere; }
 @media (max-width: 720px) {
   .watch-layout { grid-template-columns: 1fr; gap: 10px; }
+  .station-data { grid-template-columns: 1fr; }
 }

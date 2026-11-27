@@ -16,12 +16,31 @@
     <a class="view-link" href="/">SLAM 地图</a>
   </header>
   <main class="watch-layout">
+    <section class="watch-card station-card" aria-labelledby="watch-station-title">
+      <div class="watch-overview">
+        <h2 id="watch-station-title">ESP32 串口接收</h2>
+        <span class="status" id="watch-usb-status">等待连接</span>
+      </div>
+      <div class="station-data">
+        <dl class="station-stats">
+          <div><dt>Jetson 串口</dt><dd><code id="watch-usb-port">—</code></dd></div>
+          <div><dt>已收报文</dt><dd id="watch-usb-total">—</dd></div>
+          <div><dt>最近按键确认</dt><dd id="watch-usb-ack">等待确认报文</dd></div>
+        </dl>
+        <div class="station-log">
+          <h3>最近接收报文</h3>
+          <p class="watch-note" id="watch-usb-empty">等待 ESP32 上报</p>
+          <ol id="watch-usb-frames" aria-label="ESP32 接收报文"></ol>
+        </div>
+      </div>
+    </section>
     <section class="watch-card" aria-labelledby="watch-state">
       <div class="watch-overview">
         <div><span class="watch-label">通道状态</span><h2 id="watch-state">监测未启动</h2></div>
         <div id="watch-link" class="status">等待星闪数据</div>
       </div>
       <p class="watch-note" id="watch-reason"></p>
+      <p class="watch-note" id="watch-station">现场确认终端离线</p>
       <dl class="watch-stats">
         <div><dt>基线有效 / 监测角格</dt><dd id="watch-baseline">—</dd></div>
         <div><dt>当前可见 / 基线有效</dt><dd id="watch-observed">—</dd></div>
